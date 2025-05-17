@@ -1,0 +1,1151 @@
+---
+title: "DAT301 Porfolio 2"
+author: "Chijiuka Fortune Akuma"
+Title: "Data Analysis and Visulaisation"
+Student_Number: "2423891"
+date:  "2025-04-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Loading of Necessary Libraries
+
+```{r}
+      library(tseries)
+      library(zoo)
+      library(forecast)
+      library(dplyr)
+      library(xts)
+      library(tidyverse)
+      library(ggplot2)
+      library(readr)
+      library(readxl)
+      library(lubridate)
+      library(tibble)
+      library(lmtest)
+      library(vars)
+      library(Metrics)
+      library(MTS)
+      library(prophet)
+      library(keras)
+      library(tensorflow)
+      library(corrplot)
+      library(randomForest)
+      library(rpart)
+      library(caret)
+      library(e1071)
+      library(pROC)
+      library(reticulate)
+      library(doParallel)
+      library(mlr)
+      library(stats)
+      library(ggpubr)
+      library(cowplot)
+      library(car)
+      library(broom)
+      library(aod)
+      library(scales)
+      library(RColorBrewer)
+      library(reshape2)
+      library(effsize)
+      library(plotly)
+```
+
+# Load the Datasets
+
+## Data-set 1
+
+```{r}
+    #SETTING THE WORK DIRECTORIES 
+      setwd("C:/Users/-/OneDrive - University of Bolton/Eugene")
+      
+      ###LOADING OF THE DATASETS ----------------
+      ## INFLATION RATES DATASET------------
+      inflation_rate <- read.csv("NigeriaInflationRates - Copy.csv")
+```
+
+## Inspect the Data-set
+
+```{r}
+# Inspect dataset
+      head(inflation_rate)
+      view(inflation_rate)
+      summary(inflation_rate)
+```
+
+## Convert the column to Date format
+
+```{r}
+ # Convert the column to Date format
+      inflation_rate$Date <- as.Date(inflation_rate$Date, format = "%d/%m/%Y")
+      
+```
+
+## Drop columns that are not important
+
+```{r}
+# Drop columns that are not important
+      inflation_rate <- dplyr::select(inflation_rate, -Production, -Crude.Oil.Export)
+```
+
+## Convert the variables to appropriate datatypes
+
+```{r}
+#Using Functions to convert the variables to appropriate datatypes
+      clean_inflation_data <- function(df) {
+        df$Date <- as.Date(df$Date, format = "%d/%m/%Y")
+        
+        numeric_cols <- c(
+          "Inflation_Rate", "Crude.Oil.Price", "CPI_Food", "CPI_Energy",
+          "CPI_Health", "CPI_Transport", "CPI_Communication", "CPI_Education"
+        )
+        
+        df[numeric_cols] <- lapply(df[numeric_cols], as.numeric)
+        
+        return(df)
+      }
+      
+      inflation_rate <- clean_inflation_data(inflation_rate)
+```
+
+## Convert the Date column to index Column
+
+```{r}
+### Converting the Date column to index Column 
+      inflation_rate <- column_to_rownames(inflation_rate, var = "Date")
+```
+
+## Detect NAs, NULL and Missing Values
+
+```{r}
+## Checking for NAs, NULL and Missing Values
+      check_missing_values <- function(df) {
+        cat("=== Missing Values Summary ===\n")
+        
+        # Check for NA values per column
+        na_counts <- sapply(df, function(x) sum(is.na(x)))
+        cat("\nNA values per column:\n")
+        print(na_counts[na_counts > 0])
+        
+        # Check for NULL values per column (not common inside data frames)
+        null_counts <- sapply(df, function(x) sum(sapply(x, is.null)))
+        cat("\nNULL values per column:\n")
+        print(null_counts[null_counts > 0])
+        
+        # Total NAs and NULLs
+        total_na <- sum(is.na(df))
+        total_null <- sum(unlist(sapply(df, function(x) sum(sapply(x, is.null)))))
+        
+        cat("\nTotal NA values in dataset:", total_na, "\n")
+        cat("Total NULL values in dataset:", total_null, "\n")
+      }
+      ## Apply the function to the Dataset
+      check_missing_values(inflation_rate)
+```
+
+## Handle detected NAs,NULL, or Missing values
+
+```{r}
+##Using functions to Handle detected NAs,NULL, or MIssing values
+      impute_missing_with_approx <- function(df) {
+        cols_with_na <- names(df)[colSums(is.na(df)) > 0]
+        
+        for (col in cols_with_na) {
+          if (is.numeric(df[[col]])) {
+            df[[col]] <- na.approx(df[[col]], na.rm = FALSE)
+            cat(paste("Interpolated missing values in:", col, "\n"))
+          } else {
+            cat(paste("Skipped non-numeric column:", col, "\n"))
+          }
+        }
+        
+        return(df)
+      }
+      ##Apply the function on the dataset
+      inflation_rate <- impute_missing_with_approx(inflation_rate)
+```
+
+# Load Data-set 2
+
+```{r}
+##LOADING OF SECOND DATASET (EXCHANGE RATE) 
+    xchange_rate <- read.csv("USD_NGN Historical Data.csv")
+```
+
+## Inspect the Dataset
+
+```{r}
+head(xchange_rate)
+      view(xchange_rate)
+```
+
+## Drop columns that are not important
+
+```{r}
+# Drop columns that are not important
+      xchange_rate <- dplyr::select(xchange_rate, -Open, -High, -Low, -Vol., -Change..)
+```
+
+## Convert the Columns into appropriate data types
+
+```{r}
+##Convert the columns into approprate data types
+      xchange_rate$Date <- as.Date(xchange_rate$Date, format="%m/%d/%Y")
+      xchange_rate$Price <- as.numeric(xchange_rate$Price)
+      str(xchange_rate)
+      view(xchange_rate)
+      # Check if there are any non-date values in the Date column
+      invalid_dates <- xchange_rate[!grepl("^\\d{4}-\\d{2}-\\d{2}$", xchange_rate$Date), ]
+      
+      # Print invalid dates
+      print(invalid_dates)
+```
+
+## Check for NAs, NULL and Missing Values
+
+```{r}
+## Checking for NAs, NULL and Missing Values
+      xchange_missing_values <- function(df) {
+        cat("=== Missing Values Summary ===\n")
+        
+        # Check for NA values per column
+        na_counts <- sapply(df, function(x) sum(is.na(x)))
+        cat("\nNA values per column:\n")
+        print(na_counts[na_counts > 0])
+        
+        # Check for NULL values per column (not common inside data frames)
+        null_counts <- sapply(df, function(x) sum(sapply(x, is.null)))
+        cat("\nNULL values per column:\n")
+        print(null_counts[null_counts > 0])
+        
+        # Total NAs and NULLs
+        total_na <- sum(is.na(df))
+        total_null <- sum(unlist(sapply(df, function(x) sum(sapply(x, is.null)))))
+        
+        cat("\nTotal NA values in dataset:", total_na, "\n")
+        cat("Total NULL values in dataset:", total_null, "\n")
+      }
+      ## Apply the function to the Dataset
+      xchange_missing_values(xchange_rate)
+```
+
+## Handle detected NAs,NULL, or Missing values
+
+```{r}
+##Using functions to Handle detected NAs,NULL, or MIssing values
+      impute_missing_values <- function(df) {
+        cols_with_na <- names(df)[colSums(is.na(df)) > 0]
+        
+        for (col in cols_with_na) {
+          if (is.numeric(df[[col]])) {
+            df[[col]] <- na.approx(df[[col]], na.rm = FALSE)
+            cat(paste("Interpolated missing values in:", col, "\n"))
+          } else {
+            cat(paste("Skipped non-numeric column:", col, "\n"))
+          }
+        }
+        
+        return(df)
+      }
+      ##Apply the function on the dataset
+      xchange_rate <- impute_missing_values(xchange_rate)
+```
+
+## Convert the Daily Exchange Rate to Monthly Data
+
+```{r}
+ ## Convert the Daily Exchange Rate to Monthly Data
+      
+      xchange_rate <- xchange_rate %>%
+        mutate(Month = floor_date(Date, "month")) %>%  # Convert to start of the month
+        group_by(Month) %>%  # Group by the new Month column
+        summarize(Monthly_Average = mean(Price, na.rm = TRUE))  # Calculate average price for each month
+      view(xchange_rate)
+```
+
+## Rename the columns in xchange_rate dataset
+
+```{r}
+# Rename the columns in xchange_rate dataset
+      xchange_rate <- xchange_rate %>%
+        rename(Date = Month, Price = Monthly_Average)  # Rename Month -> Date and Monthly_Average -> Price
+```
+
+## Filter data from 2008 to 2024
+
+```{r}
+# Filter data from 2008 to 2024
+      xchange_rate_filtered <- xchange_rate %>%
+        filter(year(Date) >= 2008 & year(Date) <= 2024)
+```
+
+## View the dataset
+
+```{r}
+# View the dataset
+      print(xchange_rate_filtered)
+      view(xchange_rate_filtered)
+```
+
+# COMBINE THE TWO DATASETS
+
+## Verify the length of the two data sets
+
+```{r}
+# Verify the length of the two data sets
+      nrow(xchange_rate_filtered)
+      nrow(inflation_rate)
+```
+
+## Drop the last row from the Inflate Rate dataset to match the Exchange rate dataset
+
+```{r}
+ # Drop the last row from the Inflate Rate dataset to match the Exchange rate dataset
+      inflation_rate <- inflation_rate %>%
+        slice(-n())  # Exclude the last row
+```
+
+## Merge the data
+
+```{r}
+#Add the monthly  exchange rate to the inflation rate dataset
+      inflation_rate$`Exchange Rate` <- xchange_rate_filtered$Price
+```
+
+## Summary of the dataset
+
+```{r}
+##SUMMARY OF THE DATSET
+      inf_rate <- inflation_rate
+```
+
+## Description of the dataset
+
+```{r}
+ 
+      # Enhanced stats
+      psych::describe(inf_rate)
+      
+      view(inf_rate)
+```
+
+# EXPLORATORY ANALYSIS
+
+## Summary Statistics
+
+```{r}
+psych::describe(inf_rate[, c("CPI_Food", "CPI_Energy", "CPI_Health", 
+                                   "CPI_Transport", "CPI_Communication", 
+                                   "CPI_Education")])
+```
+
+# Impact of Inflation Rate on CPI Categories
+
+```{r}
+cpi_vars <- c("CPI_Food", "CPI_Energy", "CPI_Health", 
+                    "CPI_Transport", "CPI_Communication", "CPI_Education")
+      
+      # Initialize a list to store results
+      reg_results <- lapply(cpi_vars, function(var) {
+        formula <- as.formula(paste(var, "~ Inflation_Rate"))
+        model <- lm(formula, data = inf_rate)
+        summary(model)$coefficients[2,1]  # get slope (beta)
+      })
+      
+      impact_df <- data.frame(Feature = cpi_vars, 
+                              Slope = unlist(reg_results))
+```
+
+## Visualise the Impact
+
+```{r}
+ggplot(impact_df, aes(x = reorder(Feature, Slope), y = Slope, fill = Slope)) +
+        geom_bar(stat = "identity") +
+        coord_flip() +
+        labs(title = "Impact of Inflation Rate on CPI Categories",
+             x = "CPI Category", y = "Estimated Impact (Slope Coefficient)") +
+        theme_minimal(base_size = 14) +
+        scale_fill_gradient2(low = "blue", high = "red", midpoint = 0)
+```
+
+## Correlation Heatmap: Inflation Rate vs. CPI Categories
+
+```{r}
+# All variables: Inflation + CPIs
+      cpis <- c("Inflation_Rate", 
+                    "CPI_Food", "CPI_Energy", "CPI_Health", 
+                    "CPI_Transport", "CPI_Communication", "CPI_Education")
+      
+      cpi_data <- inf_rate[, cpis]
+      
+      # Compute correlation matrix
+      cor_matrix <- cor(cpi_data, use = "complete.obs")
+```
+
+## Visualise the Heatmap
+
+```{r}
+# Create a clean, high-contrast heatmap
+      corrplot(cor_matrix,
+               method = "color",            # use color tiles
+               type = "upper",              # show upper triangle
+               col = colorRampPalette(c("darkred", "white", "darkblue"))(100),  # fine-grained diverging color
+               addCoef.col = "white",       # add black correlation coefficients
+               number.cex = 0.8,            # font size for numbers
+               tl.col = "black",            # axis text color
+               tl.srt = 45,                 # axis text rotation
+               diag = FALSE,                # hide diagonal
+               addgrid.col = "grey",        # grid line color
+               mar = c(0, 0, 2, 0),         # margins
+               title = "Correlation Heatmap: Inflation Rate vs. CPI Categories")
+```
+
+# Impact of Crude Oil Price and Exchange Rate on Inflation Rate
+
+```{r}
+# Fit a multiple linear regression model
+      model_inflation_impact <- lm(Inflation_Rate ~ Crude.Oil.Price + `Exchange Rate`, data = inf_rate)
+```
+
+## Summary of the model to see the coefficients and statistical significance
+
+```{r}
+      # Summary of the model to see the coefficients and statistical significance
+      summary(model_inflation_impact)
+```
+
+## Extract coefficients for Crude Oil Price and Exchange Rate
+
+```{r}
+      # Extract coefficients for Crude Oil Price and Exchange Rate
+      coefficients_df <- data.frame(
+        Feature = c("Crude Oil Price", "Exchange Rate"),
+        Coefficient = coef(model_inflation_impact)[2:3]  # Get coefficients for Crude Oil Price and Exchange Rate
+      )
+```
+
+## Visualise the Impact
+
+```{r}
+# Create a clean and well-aligned bar plot with a bold vertical line at 0 on the y-axis
+      ggplot(coefficients_df, aes(x = reorder(Feature, Coefficient), y = Coefficient, fill = Coefficient)) +
+        geom_bar(stat = "identity", color = "black", width = 0.75, show.legend = FALSE) +  # Clean bars
+        coord_flip() +  # Flip coordinates to make labels readable
+        labs(
+          title = "Impact of Crude Oil Price and Exchange Rate on Inflation Rate",
+          x = NULL,  # Remove x-axis label for cleaner look
+          y = "Coefficient (Impact on Inflation Rate)"
+        ) +
+        theme_minimal(base_size = 16) +  # Use a larger base font size for clarity
+        theme(
+          plot.title = element_text(hjust = 0.5, face = "bold", size = 18),  # Center title and bold
+          axis.text.y = element_text(size = 14),  # Adjust y-axis label font size
+          axis.text.x = element_text(size = 12),  # Adjust x-axis label font size
+          axis.title.y = element_text(size = 14),  # Make y-axis title slightly larger
+          axis.title.x = element_blank(),  # No x-axis title to keep it clean
+          panel.grid.major = element_line(color = "gray90", size = 0.5),  # Light grid lines for subtlety
+          panel.grid.minor = element_blank(),  # Remove minor grid lines
+          panel.border = element_blank(),  # Remove plot border for a more open look
+          plot.margin = unit(c(1, 1, 1, 1), "cm"),  # Correct margin specification
+          axis.line.x = element_line(color = "black", size = 1),  # Bold x-axis line
+          axis.line.y = element_blank()  # Remove y-axis line for a cleaner look
+        ) +
+        scale_fill_gradient2(
+          low = "#3B9AB2",    # Soft blue
+          mid = "#E0E0E0",    # Light grey
+          high = "#F21A00",   # Deep red
+          midpoint = 0
+        ) +
+        scale_x_discrete(limits = rev(levels(coefficients_df$Feature))) +  # Ensure proper alignment of bars
+        geom_hline(yintercept = 0, linetype = "solid", size = 1.2, color = "black")  # Bold horizontal line at y = 0
+      
+```
+
+## Correlation Heatmap of Crude Oil Price, Exchange Rate, and Inflation Rate
+
+```{r}
+ # Calculate the correlation matrix for Crude Oil Price, Exchange Rate, and Inflation Rate
+      cor_matrix <- cor(inf_rate[, c("Crude.Oil.Price", "Exchange Rate", "Inflation_Rate")])
+   
+      # Convert the correlation matrix into a long format
+      cor_matrix_melted <- melt(cor_matrix)
+```
+
+## Visualise the Correlation
+
+```{r}
+# Plot the correlation heatmap
+      ggplot(cor_matrix_melted, aes(Var1, Var2, fill = value)) +
+        geom_tile() +
+        scale_fill_gradient2(low = "blue", high = "red", midpoint = 0) +
+        labs(
+          title = "Correlation Heatmap of Crude Oil Price, Exchange Rate, and Inflation Rate",
+          x = "Variables",
+          y = "Variables",
+          fill = "Correlation"
+        ) +
+        theme_minimal(base_size = 14) +
+        theme(
+          plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 14),
+          panel.grid = element_blank()
+        )
+```
+
+## Print the Correlation
+
+```{r}
+print(cor_matrix_melted)
+```
+
+## Correlation with Trend line
+
+## Inflation Vs Crude oil Price
+
+```{r}
+# Plot Inflation Rate vs Crude Oil Price with a trend line
+      ggplot(inf_rate, aes(x = Crude.Oil.Price, y = Inflation_Rate)) +
+        geom_point(color = "blue") +                           # Plot the data points
+        geom_smooth(method = "lm", color = "red", se = FALSE) +  # Add a linear trend line
+        labs(title = "Inflation Rate vs Crude Oil Price",
+             x = "Crude Oil Price", y = "Inflation Rate") +
+        theme_minimal(base_size = 14)
+```
+
+## Inflation Vs Exchange Rate
+
+```{r}
+
+      # Plot Inflation Rate vs Exchange Rate with a trend line
+      ggplot(inf_rate, aes(x = `Exchange Rate`, y = Inflation_Rate)) +
+        geom_point(color = "green") +                           # Plot the data points
+        geom_smooth(method = "lm", color = "red", se = FALSE) +  # Add a linear trend line
+        labs(title = "Inflation Rate vs Exchange Rate",
+             x = "Exchange Rate", y = "Inflation Rate") +
+        theme_minimal(base_size = 14)
+```
+
+## Correlation Matrix for All Variables
+
+```{r}
+# Select all relevant columns including Inflation_Rate, CPI columns, Crude.Oil.Price, and Exchange Rate
+      all_columns <- c("Inflation_Rate", grep("^CPI_", names(inf_rate), value = TRUE), "Crude.Oil.Price", "Exchange Rate")
+      
+      # Subset the data to include only the selected columns
+      selected_data <- inf_rate[, all_columns]
+      
+      # Calculate the correlation matrix for all selected variables
+      cor_matrix_all <- cor(selected_data, use = "complete.obs")
+```
+
+## Plot the Correlation Matrix
+
+```{r}
+ # Plot the correlation heatmap
+      corrplot(cor_matrix_all, method = "color", type = "upper", 
+               tl.cex = 0.8, tl.col = "black", addCoef.col = "white",
+               title = "Correlation Matrix for All Variables", mar = c(0,0,1,0))
+```
+
+## Print the Matrix
+
+```{r}
+print(cor_matrix_all)
+```
+
+## Yearly average of inflation
+
+```{r}
+ # Extract the year from row names
+      inf_rate$Year <- format(as.Date(rownames(inf_rate)), "%Y")
+      
+      # Replace 'InflationRate' with the actual column name from your dataset
+      yearly_avg_inflation <- aggregate(Inflation_Rate ~ Year, data = inf_rate, FUN = mean)
+```
+
+## Visualise the Yearly Average
+
+```{r}
+ggplot(yearly_avg_inflation, aes(x = as.numeric(Year), y = Inflation_Rate)) +
+        geom_line(color = "#228B22", size = 1.2) +
+        geom_point(color = "red", size = 3) +
+        geom_text(aes(label = round(Inflation_Rate, 2)), vjust = -0.8, size = 3.5) +
+        labs(
+          title = "Yearly Average Inflation Rate",
+          x = "Year",
+          y = "Average Inflation (%)"
+        ) +
+        scale_x_continuous(breaks = as.numeric(yearly_avg_inflation$Year)) +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels
+```
+
+# Effect Analysis
+
+```{r}
+### Effect Analysis
+      # If Date is row names (index), do this:
+      inf_rate$Date <- as.Date(rownames(inf_rate))
+      
+      # Now perform slicing as usual
+      before_covid <- inf_rate[inf_rate$Date < as.Date("2020-03-01"), "Inflation_Rate"]
+      after_covid  <- inf_rate[inf_rate$Date >= as.Date("2020-03-01"), "Inflation_Rate"]
+      
+      cohen.d(before_covid, after_covid)
+      t.test(before_covid, after_covid, var.equal = FALSE)
+      
+      sum(inf_rate$Date < as.Date("2020-03-01"))   # Count of before COVID
+      sum(inf_rate$Date >= as.Date("2020-03-01"))  # Count of after COVID
+```
+
+## Visualise the
+
+```{r}
+ #BoxPlot
+      boxplot(before_covid, after_covid, names = c("Before COVID", "After COVID"),
+              col = c("lightblue", "lightgreen"),
+              main = "Inflation Rate Before and After COVID")
+```
+
+## T-Test and Cohen Test
+
+```{r}
+t_test_result <- t.test(before_covid, after_covid, var.equal = FALSE)
+      print(t_test_result)
+      
+      cohen_d_result <- cohen.d(before_covid, after_covid)
+      print(cohen_d_result)
+```
+
+## Visualise the BoxPlot of Before and after COVID
+
+```{r}
+
+      
+      # Create a new column for period
+      inf_rate$Period <- ifelse(inf_rate$Date < as.Date("2020-03-01"), "Before COVID", "After COVID")
+      
+     
+      # Boxplot
+      ggplot(inf_rate, aes(x = Period, y = Inflation_Rate, fill = Period)) +
+        geom_boxplot(width = 0.5, outlier.color = "red") +
+        labs(title = "Inflation Rate in Nigeria Before and After COVID-19",
+             x = "", y = "Inflation Rate (%)") +
+        theme_minimal() +
+        theme(legend.position = "none") +
+        scale_fill_manual(values = c("Before COVID" = "#00BFC4", "After COVID" = "#F8766D"))
+```
+
+## Time Series Plot with Highlighted COVID Break Point
+
+```{r}
+##Time Series Plot with Highlighted COVID Break Point
+      ggplot(inf_rate, aes(x = Date, y = Inflation_Rate)) +
+        geom_line(color = "#2C3E50", size = 1) +  # Deep blue line
+        geom_point(shape = 16, color = "#E67E22", size = 1.5) +  # Tiny orange circles
+        geom_vline(xintercept = as.Date("2020-03-01"), linetype = "dashed", color = "#E74C3C", size = 0.8) +
+        annotate("text", x = as.Date("2020-04-01"), y = max(inf_rate$Inflation_Rate, na.rm = TRUE) + 1,
+                 label = "COVID-19 Start", color = "#E74C3C", angle = 90, hjust = 0, size = 3.2, fontface = "italic") +
+        labs(
+          title = "📈 Monthly Inflation Rate in Nigeria (2008–2024)",
+          subtitle = "Data Source: National Bureau of Statistics (NBS) and Central Bank of Nigeria (CBN)",
+          x = "Year", y = "Inflation Rate (%)"
+        ) +
+        scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+        theme_minimal(base_size = 12) +
+        theme(
+          plot.title = element_text(face = "bold", size = 14, color = "#2C3E50"),
+          plot.subtitle = element_text(size = 10, color = "gray40"),
+          axis.title = element_text(face = "bold"),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          panel.grid.minor = element_blank()
+        )
+```
+
+# CONVERT THE DATA SET TO TIME SERIES
+
+```{r}
+# Convert the log-transformed column to a time series object
+      ts_online <- ts(inf_rate, start = c(2008, 1), frequency = 12)
+```
+
+## Inspect the data
+
+```{r}
+ print(head(ts_online))
+      class(ts_online)
+```
+
+## CHECK FOR AND HANDLE OUTLIERS
+
+```{r}
+# Function to detect outliers using IQR
+      detect_outliers <- function(ts_data) {
+        Q1 <- quantile(ts_data, 0.25, na.rm = TRUE)
+        Q3 <- quantile(ts_data, 0.75, na.rm = TRUE)
+        IQR_value <- Q3 - Q1
+
+        lower_bound <- Q1 - 1.5 * IQR_value
+        upper_bound <- Q3 + 1.5 * IQR_value
+
+        outliers <- which(ts_data < lower_bound | ts_data > upper_bound)
+        return(outliers)
+      }
+
+      # Find outliers in target variable
+      outliers_target <- detect_outliers(ts_online)
+
+      # Print detected outliers
+      print(outliers_target)
+```
+
+## Handle Outliers
+
+```{r}
+# Function to replace outliers with interpolated values
+      handle_outliers <- function(ts_data, outliers) {
+        ts_cleaned <- ts_data
+        ts_cleaned[outliers] <- NA  # Replace outliers with NA
+        ts_cleaned <- zoo::na.approx(ts_cleaned, rule = 2)  # Interpolate missing values
+        return(ts_cleaned)
+      }
+
+      # Handle outliers in target variable
+      ts_online_cleaned <- handle_outliers(ts_online, outliers_target)
+```
+
+## Plot of Crude Oil Price VS Exchange Rate Vs Inflation Rate
+
+```{r}
+ # Extract date from time index of ts object
+      dates <- as.Date(as.yearmon(time(ts_online)))
+      
+      # Create a data frame with required columns
+      df_combined <- tibble(
+        Date = dates,
+        Inflation_Rate = ts_online_cleaned[, "Inflation_Rate"],
+        Crude.Oil.Price = ts_online_cleaned[, "Crude.Oil.Price"],
+        `Exchange Rate` = ts_online_cleaned[, "Exchange Rate"]
+      )
+      
+      # Reshape to long format for ggplot
+      df_long <- df_combined %>%
+        pivot_longer(cols = c(Inflation_Rate, Crude.Oil.Price, `Exchange Rate`),
+                     names_to = "Variable", values_to = "Value")
+      
+      # Plot
+      ggplot(df_long, aes(x = Date, y = Value, color = Variable)) +
+        geom_line(size = 1) +
+        labs(title = "Inflation Rate, Crude Oil Price & Exchange Rate (2008 - Present)",
+             x = "Year", y = "Value", color = "Variable") +
+        scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Reconstruct and Plot
+
+```{r}
+ ##Reconstructing the tS data
+      ts_inf <- ts(ts_online, start = c(2008, 1), frequency = 12 )
+      
+      class(ts_inf) 
+      print(head(ts_inf))
+      
+      ##Visualizing Before and After Outlier Handling
+      
+      autoplot(ts_inf)
+```
+
+## Decompose the Variables
+
+```{r}
+# Extract the specific time series as a vector from the matrix
+      ts_inflation <- ts_inf[, "Inflation_Rate"]
+      ts_crude <- ts_inf[, "Crude.Oil.Price"]
+      ts_xchange <- ts_inf[, "Exchange Rate"]
+      
+      decomposed_inflation <- stl(ts(ts_inflation, frequency = 12), s.window = "periodic") # Seasonal decomposition
+      decomposed_crude  <- stl(ts(ts_crude, frequency = 12), s.window = "periodic")
+      decomposed_xchange <- stl(ts(ts_xchange, frequency = 12), s.window = "periodic")
+```
+
+## Plot the decomposition
+
+```{r}
+# Plot the decomposition
+      autoplot(decomposed_inflation) +
+        labs(title = "Inflation Rate",
+             x = "Date") +
+        theme_minimal()
+      
+      autoplot(decomposed_xchange) +
+        labs(title = "Decomposition of Exchange Rate",
+             x = "Date") +
+        theme_minimal()
+      
+      autoplot(decomposed_crude) +
+        labs(title = "Decomposition of Crude Oil Price",
+             x = "Date") +
+        theme_minimal()
+      
+```
+
+## Run ADF Test to check for Stationarity
+
+```{r}
+# ADF test for Inflation Rate
+      adf_inflation_rate <- adf.test(ts_inflation)
+      
+      # ADF test for Crude Oil Price
+      adf_crude_oil <- adf.test(ts_crude)
+      
+      # ADF test for Exchange Rate
+      adf_exchange_rate <- adf.test(ts_xchange)
+```
+
+## Print the result of the ADF Test
+
+```{r}
+# Print and interpret results
+      cat("\nADF Test Result for Inflation Rate:\n")
+      print(adf_inflation_rate)
+      if (adf_inflation_rate$p.value < 0.05) {
+        cat("=> Inflation Rate is stationary (p-value:", adf_inflation_rate$p.value, ")\n")
+      } else {
+        cat("=> Inflation Rate is NOT stationary (p-value:", adf_inflation_rate$p.value, ")\n")
+      }
+      
+      cat("\nADF Test Result for Crude Oil Price:\n")
+      print(adf_crude_oil)
+      if (adf_crude_oil$p.value < 0.05) {
+        cat("=> Crude Oil Price is stationary (p-value:", adf_crude_oil$p.value, ")\n")
+      } else {
+        cat("=> Crude Oil Price is NOT stationary (p-value:", adf_crude_oil$p.value, ")\n")
+      }
+      
+      cat("\nADF Test Result for Exchange Rate:\n")
+      print(adf_exchange_rate)
+      if (adf_exchange_rate$p.value < 0.05) {
+        cat("=> Exchange Rate is stationary (p-value:", adf_exchange_rate$p.value, ")\n")
+      } else {
+        cat("=> Exchange Rate is NOT stationary (p-value:", adf_exchange_rate$p.value, ")\n")
+      }
+      
+```
+
+## Applying NDIFFS to get the number of differencing needed
+
+```{r}
+ # Apply ndiffs to determine how many differences are needed for stationarity
+      # Find the number of differences required to make the series stationary
+      diffs_needed_inflation <- ndiffs(ts_inflation)
+      diffs_needed_crude_oil <- ndiffs(ts_crude)
+      diffs_needed_exchange_rate <- ndiffs(ts_xchange)
+      
+      # Print the number of differences needed for each time series
+      print(diffs_needed_inflation)
+      print(diffs_needed_crude_oil)
+      print(diffs_needed_exchange_rate)
+```
+
+## Apply differencing based on the number of differences calculated
+
+```{r}
+ # Apply differencing based on the number of differences calculated
+      differenced_inflation <- diff(ts_inflation, differences = diffs_needed_inflation)
+      differenced_crude_oil <- diff(ts_crude, differences = diffs_needed_crude_oil)
+      differenced_exchange_rate <- diff(ts_xchange, differences = diffs_needed_exchange_rate) 
+      
+      # Print the differenced time series
+      print(differenced_inflation)
+      print(differenced_crude_oil)
+      print(differenced_exchange_rate)
+```
+
+## Check the length of the original and differenced time series
+
+```{r}
+# Check the length of the original and differenced time series
+      length(ts_inf[, "Inflation_Rate"])
+      length(differenced_inflation)
+      
+      length(ts_inf[, "Crude.Oil.Price"])
+      length(differenced_crude_oil)
+      
+      length(ts_inf[, "Exchange Rate"])
+      length(differenced_exchange_rate)
+```
+
+## Align inflation rate and crude oil with exchange rate
+
+```{r}
+differenced_inflation <- head(differenced_inflation, -1)
+      differenced_crude_oil <- head(differenced_crude_oil, -1)
+```
+
+## Apply ADF test on the differenced time series
+
+```{r}
+# Apply ADF test on the differenced time series
+      adf_differenced_inflation <- adf.test(differenced_inflation)
+      adf_differenced_crude_oil <- adf.test(differenced_crude_oil)
+      adf_differenced_exchange_rate <- adf.test(differenced_exchange_rate)
+```
+
+## Print the results
+
+```{r}
+# Print results for differenced time series
+      cat("\nADF Test Result for Differenced Inflation Rate:\n")
+      print(adf_differenced_inflation)
+      
+      cat("\nADF Test Result for Differenced Crude Oil Price:\n")
+      print(adf_differenced_crude_oil)
+      
+      cat("\nADF Test Result for Differenced Exchange Rate:\n")
+      print(adf_differenced_exchange_rate)
+      
+```
+
+## Decompose the Differenced Time Series
+
+```{r}
+
+      # Step 1: Decompose the differenced time series using STL (Seasonal and Trend decomposition using LOESS)
+      decomposed_differenced_inflation <- stl(differenced_inflation, s.window = "periodic", t.window = 12)
+      decomposed_differenced_crude_oil <- stl(differenced_crude_oil, s.window = "periodic", t.window = 12)
+      decomposed_differenced_exchange_rate <- stl(differenced_exchange_rate, s.window = "periodic", t.window = 12)
+```
+
+## Plot the Decomposition
+
+```{r}
+# Plot the decompositions using autoplot() for each differenced time series
+      
+      autoplot(decomposed_differenced_inflation) + 
+        labs(title = "Decomposition of Differenced Inflation Rate", 
+             subtitle = "Trend, Seasonal, and Remainder")
+      
+      autoplot(decomposed_differenced_crude_oil) + 
+        labs(title = "Decomposition of Differenced Crude Oil Price", 
+             subtitle = "Trend, Seasonal, and Remainder")
+      
+      autoplot(decomposed_differenced_exchange_rate) + 
+        labs(title = "Decomposition of Differenced Exchange Rate", 
+             subtitle = "Trend, Seasonal, and Remainder")
+```
+
+## Check lengths of differenced variables
+
+```{r}
+ # Check lengths of differenced variables
+      length(differenced_inflation)  # Length of differenced inflation rate
+      length(differenced_crude_oil)  # Length of differenced crude oil price
+      length(differenced_exchange_rate)  # Length of differenced exchange rate
+      
+```
+
+## Align Variables for Model fitting
+
+```{r}
+# 1. Align the target variable (differenced_inflation) after differencing
+      inflation_aligned <- differenced_inflation  # Already length = 196
+      class(inflation_aligned)
+      # 2. Combine the differenced exogenous variable (Exchange Rate)
+      exo_var <- differenced_exchange_rate  # Using only Exchange Rate as exogenous variable
+      
+      # Confirm lengths
+      length(inflation_aligned)  # Should be 196
+     length(exo_var)              # Should be 196 x 1 (since only Exchange Rate is used as exogenous variable)
+      
+     print(inflation_aligned)
+```
+
+## Split the dataset into Train and Test
+
+```{r}
+#SPLIT THE DATASET INTO TRAINING AND TESTING SETS
+     # Split index (80% training, 20% testing)
+     n <- length(inflation_aligned)  # 196
+     split_index <- floor(0.8 * n)   # 156
+     
+     # Create training and testing sets
+     inflation_train <- inflation_aligned[1:split_index]
+     inflation_test  <- inflation_aligned[(split_index + 1):n]
+     
+     exo_train <- exo_var[1:split_index]
+     exo_test  <- exo_var[(split_index + 1):n]
+     
+     # Convert target series to time series format (monthly frequency)
+     inflation_train_ts <- ts(inflation_train, start = c(2008, 2), frequency = 12)
+     inflation_test_ts  <- ts(inflation_test, start = c(2008 + floor((split_index + 1) / 12), ((split_index + 1) %% 12) + 1), frequency = 12)
+     
+     # Convert exogenous variable to time series format (monthly frequency)
+     exo_train_ts <- ts(exo_train, start = c(2008, 2), frequency = 12)
+     exo_test_ts  <- ts(exo_test, start = c(2008 + floor((split_index + 1) / 12), ((split_index + 1) %% 12) + 1), frequency = 12)
+      
+```
+
+# FIT MODELS FOR FORECASTING
+
+## SARIMAX MODE
+
+```{r}
+ # Use the whole time series (inflation_aligned) for training
+     inflation_ts <- inflation_aligned
+     
+     # Assuming exo_var is also a time series object
+     exo_ts <- exo_var
+     
+     # Fit a SARIMAX model (ARIMA with exogenous variables)
+     sarimax_model <- auto.arima(inflation_ts, xreg = exo_ts, seasonal = TRUE)
+     summary(sarimax_model)
+     
+     
+          ##Model Diagnostics
+     # Ljung-Box Test on residuals
+     Ljung_Sarimax <- Box.test(residuals(sarimax_model), lag = 20, type = "Ljung-Box")
+     
+     # AIC and BIC
+     Aic_Sarimax <- AIC(sarimax_model)
+     BIC_Sarimax <- (sarimax_model)
+     
+     print(Ljung_Sarimax)
+     print(Aic_Sarimax)
+     print(BIC_Sarimax)
+     
+```
+
+## Forecast with Exogenous Variable
+
+```{r}
+# Forecast the next 12 months (June 2024 to December 2025)
+     forecast_horizon <- 12
+     exo_future <- tail(exo_ts, 1)  # Get the last value of the exogenous variable
+     exo_future <- rep(exo_future, forecast_horizon)  # Replicate for the forecast horizon 
+
+# Forecast the inflation rate considering the exogenous variable
+     sarimax_forecast_future <- forecast(sarimax_model, xreg = exo_future, h = forecast_horizon)
+     # Last actual inflation value (May 2024) before the forecast (this should be the real value from the dataset)
+     last_actual_value <- 33.69  # Adjust this as per the actual last value in your dataset
+     
+     # Get the differenced forecasted inflation values from SARIMAX forecast
+     forecasted_differenced_values <- sarimax_forecast_future$mean
+     
+     # Reverse differencing: Add last actual value to the cumulative sum of differenced values
+     inflation_forecasted_actuals <- last_actual_value + cumsum(forecasted_differenced_values)
+     
+     # Print the original inflation values after reversing differencing
+     print(inflation_forecasted_actuals)
+     
+     # Assume inflation_forecasted_actuals are the forecasted inflation values and forecasted_dates are the corresponding dates
+     forecasted_dates <- seq(as.Date("2024-05-01"), by = "month", length.out = length(inflation_forecasted_actuals))
+     
+     # Create a data frame with the forecasted dates and inflation values
+     forecast_data <- data.frame(Date = forecasted_dates, Inflation = inflation_forecasted_actuals)
+```
+
+## Plot the Forecasted Values from May 2024 - April 2025
+
+```{r}
+# Plot using ggplot2 with values on top of the marks
+     ggplot(forecast_data, aes(x = Date, y = Inflation)) +
+       geom_line(color = "blue", size = 1) +  # Line plot
+       geom_point(color = "red", size = 2) +  # Points on the line
+       geom_text(aes(label = round(Inflation, 2)), vjust = -0.5, color = "black", size = 3) +  # Add text labels
+       labs(title = "Inflation Rate Forecast (May 2024 - April 2025)",
+            x = "Date", y = "Inflation Rate (%)") +
+       theme_minimal() +
+       theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Rotate x-axis labels for readability
+       scale_x_date(date_labels = "%b %Y", date_breaks = "1 month")  # Format the x-axis labels to display months and years
+```
+
+# SARIMA MODEL
+
+## Fit the Model
+
+```{r}
+# Use the whole time series (inflation_aligned) for training
+     inflation_ts <- inflation_aligned
+     
+     # Fit a SARIMA model 
+     sarima_model <- auto.arima(inflation_ts, seasonal = TRUE)
+     summary(sarima_model)
+     
+     
+     ##Model Diagnostics
+     # Ljung-Box Test on residuals
+     Ljung_Sarima <- Box.test(residuals(sarima_model), lag = 20, type = "Ljung-Box")
+     
+     # AIC and BIC
+     Aic_Sarima <- AIC(sarima_model)
+     BIC_Sarima <- (sarima_model)
+     
+     print(Ljung_Sarima)
+     print(Aic_Sarima)
+     print(BIC_Sarima)
+```
+
+## Forecast with SARIMA
+
+```{r}
+ # Forecast the next 12 months (June 2024 to December 2025)
+     forecast_horizon <- 12
+    
+      # Forecast the inflation rate considering the exogenous variable
+     sarima_forecast_future <- forecast(sarima_model, h = forecast_horizon)
+     # Last actual inflation value (May 2024) before the forecast (this should be the real value from the dataset)
+     last_actual_value <- 33.69  # Adjust this as per the actual last value in your dataset
+     
+     # Get the differenced forecasted inflation values from SARIMAX forecast
+     forecasted_differenced_values_sarima <- sarima_forecast_future$mean
+     
+     # Reverse differencing: Add last actual value to the cumulative sum of differenced values
+     inflation_forecasted_actuals_sarima <- last_actual_value + cumsum(forecasted_differenced_values_sarima)
+     
+     # Print the original inflation values after reversing differencing
+     print(inflation_forecasted_actuals_sarima)
+     
+     # Create a sequence of dates starting from June 2024 (or the start of your forecast) up to December 2025
+     forecasted_dates <- seq(as.Date("2024-05-01"), by = "month", length.out = length(inflation_forecasted_actuals_sarima))
+     
+     # Create a data frame with forecasted dates and inflation values
+     forecast_data <- data.frame(Date = forecasted_dates, Inflation = inflation_forecasted_actuals_sarima)
+```
+
+## Plot the Forecasted Values
+
+```{r}
+# Plot using ggplot2 with values on each point
+     ggplot(forecast_data, aes(x = Date, y = Inflation)) +
+       geom_line(color = "blue", size = 1) +  # Line plot
+       geom_point(color = "red", size = 2) +  # Points on the line
+       geom_text(aes(label = round(Inflation, 2)), vjust = -0.5, color = "black", size = 3) +  # Add values on each point
+       labs(title = "Inflation Rate Forecast (May 2024 - April 2025)",
+            x = "Date", y = "Inflation Rate (%)") +
+       theme_minimal() +
+       theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Rotate x-axis labels for readability
+       scale_x_date(date_labels = "%b %Y", date_breaks = "1 month")  # Format the x-axis labels to display months and years
+```
+
+## Granger Causality Test
+
+```{r}
+#Granger Causality Effect
+# Granger Causality Test between Inflation Rate and Exchange Rate
+     granger_inflation_exchange <- grangertest(Inflation_Rate ~ `Exchange Rate`, order = 2, data = ts_inf)
+     
+     # Granger Causality Test between Inflation Rate and Crude Oil Price
+     granger_inflation_oil <- grangertest(Inflation_Rate ~ Crude.Oil.Price, order = 2, data = ts_inf)
+     
+     # Display the results of both tests
+     granger_inflation_exchange
+     granger_inflation_oil
+```
+
+# The End!
